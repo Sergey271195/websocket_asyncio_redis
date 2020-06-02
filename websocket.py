@@ -203,7 +203,7 @@ if __name__ == '__main__':
     message_queue = asyncio.Queue()
 
     listener = AsyncTelegramListener()
-    start_server = websockets.serve(functools.partial(main, listener=listener, message_queue = message_queue), "remindme-scheduler.herokuapp.com", os.environ.get('PORT'))
+    start_server = websockets.serve(functools.partial(main, listener=listener, message_queue = message_queue), "0.0.0.0", os.environ.get('PORT'))
     
     asyncio.get_event_loop().run_until_complete(asyncio.gather(listener.redis_connection_listener(5), start_server))
     asyncio.get_event_loop().run_forever()
