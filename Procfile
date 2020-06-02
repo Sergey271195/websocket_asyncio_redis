@@ -1,1 +1,1 @@
-web: websocket.py
+web: python websocket.py
