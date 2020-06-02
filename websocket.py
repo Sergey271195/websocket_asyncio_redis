@@ -120,7 +120,7 @@ class AsyncTelegramListener():
                         except Exception as e:
                             print(e)
                     elif time_delta < -200:
-                        await redis.zrem(user, first_task)
+                        await redis.zrem(user, first_task[0])
                         print('Delte unsend message. Time expired')
                     else:
                         print('Idiling... ')
