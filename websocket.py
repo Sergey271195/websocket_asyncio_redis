@@ -99,15 +99,15 @@ class AsyncTelegramListener():
             print('Connecting to Redis database')
             users = await redis.smembers('users')
             for user in users:
-                first_task_before = await redis.zrange(user, 0, 0)
-                closest_task = await redis.zpopmin(user)
-                first_task_after = await redis.zrange(user, 0, 0)
-                print(closest_task, '-----', first_task_before, '-------', first_task_after)
-                if closest_task:
-                    time_delta =  int(closest_task[1]) - int(datetime.datetime.now().timestamp())
+                first_task = await redis.zrange(user, 0, 0)
+                print(first_task)
+                if first_task:
+                    time, task = first_task[0].split('.')
+                    time_delta =  int(time) - int(datetime.datetime.now().timestamp())
                     if abs(time_delta) < self.SEND_MESSAGE_INTERVAL:
                         print('Send message to user', user)
-                        message_to_send = f'You asked us to remind you about: {closest_task[0][11:]}'
+                        message_to_send = f'You asked us to remind you about: {task}'
+                        await redis.zrem(user, first_task)
                         try:
                             async with self.session.post(self.SEND_MESSAGE_URL, data= {'chat_id': user, 'text': message_to_send}) as response:
                                 print(response.status)
@@ -115,15 +115,15 @@ class AsyncTelegramListener():
                                     print('Success')
                                 else:
                                     print(f'Message for user {user} was delayed')
-                                    delay = int(closest_task[1]) + self.MESSAGE_DELAY
-                                    await redis.zadd(user, delay, closest_task[0])
+                                    delay = int(time) + self.MESSAGE_DELAY
+                                    await redis.zadd(user, delay, task)
                         except Exception as e:
                             print(e)
                     elif time_delta < -200:
+                        await redis.zrem(user, first_task)
                         print('Delte unsend message. Time expired')
                     else:
-                        print('Adding task back', int(closest_task[1]), closest_task[0])
-                        await redis.zadd(user, int(closest_task[1]), closest_task[0])
+                        print('Idiling... ')
 
             await asyncio.sleep(request_interval)
 
