@@ -107,7 +107,7 @@ class AsyncTelegramListener():
                     if abs(time_delta) < self.SEND_MESSAGE_INTERVAL:
                         print('Send message to user', user)
                         message_to_send = f'You asked us to remind you about: {task}'
-                        await redis.zrem(user, first_task)
+                        await redis.zrem(user, first_task[0])
                         try:
                             async with self.session.post(self.SEND_MESSAGE_URL, data= {'chat_id': user, 'text': message_to_send}) as response:
                                 print(response.status)
