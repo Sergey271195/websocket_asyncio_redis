@@ -99,9 +99,10 @@ class AsyncTelegramListener():
             print('Connecting to Redis database')
             users = await redis.smembers('users')
             for user in users:
+                first_task_before = await redis.zrange(user, 0, 0)
                 closest_task = await redis.zpopmin(user)
-                first_task = await redis.zrange(user, 0, 1)
-                print(closest_task, '-----', first_task)
+                first_task_after = await redis.zrange(user, 0, 0)
+                print(closest_task, '-----', first_task_before, '-------', first_task_after)
                 if closest_task:
                     time_delta =  int(closest_task[1]) - int(datetime.datetime.now().timestamp())
                     if abs(time_delta) < self.SEND_MESSAGE_INTERVAL:
