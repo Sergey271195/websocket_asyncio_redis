@@ -100,6 +100,8 @@ class AsyncTelegramListener():
             users = await redis.smembers('users')
             for user in users:
                 closest_task = await redis.zpopmin(user)
+                first_task = await redis.zrange(user, 0, 1)
+                print(closest_task, '-----', first_task)
                 if closest_task:
                     time_delta =  int(closest_task[1]) - int(datetime.datetime.now().timestamp())
                     if abs(time_delta) < self.SEND_MESSAGE_INTERVAL:
@@ -119,6 +121,7 @@ class AsyncTelegramListener():
                     elif time_delta < -200:
                         print('Delte unsend message. Time expired')
                     else:
+                        print('Adding task back', int(closest_task[1]), closest_task[0])
                         await redis.zadd(user, int(closest_task[1]), closest_task[0])
 
             await asyncio.sleep(request_interval)
