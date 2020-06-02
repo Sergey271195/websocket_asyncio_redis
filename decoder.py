@@ -37,7 +37,7 @@ class TextDecoder():
         self.text = text.lower()
 
     def check_text(self):
-
+        print(self.text)
         if self.text.startswith('список'):
             list_date_expression = re.compile(r'список ((?P<today>сегодня)|(?P<tomorrow>завтра)|(?P<day>\b\d{1,2}\b)\s?(?P<month>\w+))')
             date_match = re.search(list_date_expression, self.text)
@@ -98,6 +98,7 @@ class TextDecoder():
                     try:
                         return_date = datetime.datetime(add_year, add_month, add_day, add_hour, add_minutes)
                         return_task = task
+                        print(return_date)
                         return((return_date, return_task))
                     except Exception as e:
                         print(e)

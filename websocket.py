@@ -96,6 +96,7 @@ class AsyncTelegramListener():
 
         redis = await aioredis.create_redis_pool(self.REDIS_TOKEN, encoding="utf-8")
         while True:
+            print('Connecting to Redis database')
             users = await redis.smembers('users')
             for user in users:
                 closest_task = await redis.zpopmin(user)
