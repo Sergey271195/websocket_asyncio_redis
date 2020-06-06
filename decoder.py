@@ -31,6 +31,46 @@ MONTH_DICT = {
     'декабря': 12  
 }
 
+NUMBERS_DICT = {
+    'один': 1,
+    'два': 2,
+    'три': 3,
+    'четыре': 4,
+    'пять': 5,
+    'шесть': 6,
+    'семь': 7,
+    'восемь': 8,
+    'девять': 9,
+    'десять': 10
+}
+
+HELP_MESSAGE = "Основные команды:\n\
+1. Команда для добавления задания в список:\n\
+	- дата в формате: сегодня|завтра|день, месяц\n\
+		пример: десятое октября, восьмое июня\n\
+		(если дата не указана задание формируется на сегодняшний день)\n\
+	- время в формате: часы, минуты\n\
+		пример: одиннадцать ноль ноль, девять тридцать\n\
+		(если время не указано задание формируется на двенадцать часов)\n\
+	- текст самого задания (если текст отсутствует, то задание не сформируется)\n\
+2.  Команда для получения списка:\n\
+	- список (возможные агрументы - сегодня|завтра|день, месяц)\n\
+	возвращает список за указанную дату с указанием ключа {номер} для обращения к заданию\n\
+	ключ используется для изменения, удаления и переноса заданий\n\
+		пример: 11:00 - Задание 1 {13}\n\
+			12:00 - Задание 2 {14}\n\
+		(без агрументов - возвращает все задания) \n\
+3. Команда для удаления задания:\n\
+	- удалить (ключ задания)\n\
+4. Команда для изменения задания:\n\
+	- изменить (ключ задания) (новое задание)\n\
+	(изменяет только содержание задания без изменения времени)\n\
+5. Команда для переноса задания:\n\
+	- перенести (ключ задания) (новое время в формате: сегодня|завтра|день, месяц)\n\
+	(изменяет только время задания без изменения содержания)\n\
+	если дата не указана, дата напоминание не изменится, изменится только время\n"
+
+
 class TextDecoder():
 
     def __init__(self):
@@ -55,14 +95,15 @@ class TextDecoder():
                 return(re.sub(date_search.group(), '', text).strip(), return_date)
 
 
-    def time_parser(self, text):
-        time_expression = re.compile(r'((в\s)?((?P<time_with_sep>\d{1,2}:\d{2})|(?P<time_without_sep>\d{1,4}\s)))')
+    def time_parser(self, text, move = False):
+        time_expression = re.compile(r'((в\s)?((?P<time_with_sep>\d{1,2}:\d{2})|(?P<time_without_sep>\d{1,4}\s?)))')
         time_search = re.search(time_expression, text)
 
         if time_search:
             
             time_with_sep = time_search.group('time_with_sep')
             time_without_sep = time_search.group('time_without_sep')
+            print(time_with_sep, time_without_sep)
 
             if time_with_sep:
                 hour, minutes = time_with_sep.split(':')
@@ -80,7 +121,7 @@ class TextDecoder():
 
 
 
-    def datetime_parse(self, text):
+    def datetime_parse(self, text, move = False):
         date_data = self.date_parser(text)
         if date_data:
             parsed_text, date = date_data
@@ -98,12 +139,16 @@ class TextDecoder():
             if time_data:
                 task, time = time_data
                 final_time = datetime.datetime(self.now.year, self.now.month, self.now.day) + time
-                return((final_time, task))    
+                if move:
+                    return((time, task))
+                else:
+                    return((final_time, task))
 
 
 
     def main_parser(self, text):
-        prefix_expression = re.compile(r'(((?P<delete>^удалить)|(?P<alter>^изменить)|(?P<move>^перенести))\s(?P<key>\d+)\s?)|(?P<list>^список)')
+
+        prefix_expression = re.compile(r'(((?P<delete>^удалить)|(?P<alter>^изменить)|(?P<move>^перенести))\s(номер\s)?(?P<key>\d+|один|два|три|четыре|пять|шесть|семь|восемь|девять|десять)\s?)|(?P<list>^список)|(?P<help>^помощь)')
         prefix_search = re.search(prefix_expression, text)
 
         if prefix_search:
@@ -117,7 +162,12 @@ class TextDecoder():
                     return({'type':'list', 'period': [int(period_start.timestamp()), int(period_end.timestamp())]})
                 else:
                     return({'type':'list', 'period': list_date})
-            if key:
+            elif prefix_search.group('help'):
+                print('HELP')
+                return({'type': 'help'})
+            elif key:
+                if key in NUMBERS_DICT.keys():
+                    key = NUMBERS_DICT.get(key)
                 if prefix_search.group('delete'):
                     return({'type' : 'remove', 'key' : key})
                 elif prefix_search.group('alter'):
@@ -125,9 +175,15 @@ class TextDecoder():
                     return({'type' : 'alter', 'key' : key, 'task' : new_task})
                 elif prefix_search.group('move'):
                     string_to_parse = re.sub(prefix_search.group(), '', text)
-                    if self.datetime_parse(string_to_parse):
-                        new_datetime = self.datetime_parse(string_to_parse)[0]
-                        return({'type' : 'move', 'key' : key, 'time' : int(new_datetime.timestamp())})
+                    if self.datetime_parse(string_to_parse, move = True):
+                        new_datetime = self.datetime_parse(string_to_parse, move = True)[0]
+                        if isinstance(new_datetime, datetime.timedelta):
+                            return({'type' : 'move', 'key' : key, 'time' : new_datetime})
+                        else:
+                            return({'type' : 'move', 'key' : key, 'time' : int(new_datetime.timestamp())})
+
+            else:
+                return({'type': 'error', 'message': 'No key for action was provided'})
         
         else:
             if self.datetime_parse(text):
