@@ -12,6 +12,7 @@ from threading import Thread
 import time
 from decoder import TextDecoder, HELP_MESSAGE
 import re
+from customTg import createRowKeyboard
 
 DEBUG  = (os.environ.get('DEBUG') == 'True')
 
@@ -103,7 +104,7 @@ class AsyncTelegramListener():
 
 class AsyncWebsocketListener():
 
-    def __init__(self, test_queue, voice_queue, message_queue, decode_queue):
+    def __init__(self, test_queue, voice_queue, message_queue, decode_queue, keyboard_queue, reply_queue):
         self.session = aiohttp.ClientSession()
         self.TOKEN = os.environ.get('REMINDME_TOKEN')
         self.URL = f'https://api.telegram.org/bot{self.TOKEN}'
@@ -115,6 +116,8 @@ class AsyncWebsocketListener():
         self.message_queue = message_queue
         self.decode_queue = decode_queue
         self.test_queue = test_queue
+        self.keyboard_queue = keyboard_queue
+        self.reply_queue = reply_queue
         self.start_converters()
 
     def start_converters(self):
@@ -123,12 +126,47 @@ class AsyncWebsocketListener():
             task = loop.create_task(self.voice_converter(self.voice_queue))
             #decode_task = loop.create_task(self.text_decoder(self.decode_queue))
             message_task = loop.create_task(self.message_sender(self.message_queue))
-            test_task = loop.create_task(self.test_decoder(self.decode_queue))
+            decode_task = loop.create_task(self.test_decoder(self.decode_queue))
+            keyboard_tasks = loop.create_task(self.keyboard_message_sender(self.keyboard_queue))
+            reply_tasks = loop.create_task(self.reply_message_handler(self.reply_queue))
+
+    async def reply_message_handler(self, queue):
+        while True:
+            redis = await aioredis.create_redis_pool(self.REDIS_TOKEN, encoding="utf-8")
+            user_id, data = await queue.get()
+            split_data = data.split('.')
+            if split_data[0] == 'add':
+                await redis.zadd(user_id, int(split_data[1]), split_data[1]+'.'+split_data[2])
+                await self.message_queue.put((f'New reminder has been set', user_id))
+            elif split_data[0] == 'remove':
+                await redis.zremrangebyrank(user_id, int(split_data[1]), int(split_data[1]))
+                await self.message_queue.put((f'The task has been deleted!', user_id))
+            elif split_data[0] == 'move':
+                await redis.zremrangebyrank(user_id, int(split_data[1]), int(split_data[1]))
+                await redis.zadd(user_id, int(split_data[2]), f'{split_data[2]}.{split_data[3]}')
+                await self.message_queue.put((f'The task has been shifted!', user_id))
+            elif split_data[0] == 'alter':
+                await redis.zremrangebyrank(user_id, int(split_data[1]), int(split_data[1]))
+                await redis.zadd(user_id, int(split_data[2]), f'{split_data[2]}.{split_data[3]}')
+                await self.message_queue.put((f'The task has been altered!', user_id))
+            queue.task_done()
+            await redis.wait_closed()
 
     async def message_sender(self, queue):
         while True:
             reply_message, user_id = await queue.get()
             async with self.session.post(self.SEND_MESSAGE_URL, data= {'chat_id': user_id, 'text': reply_message}) as response:
+                r = await response.json()
+                if response.status == 200:
+                    queue.task_done()
+                else:
+                    await asyncio.sleep(10)
+                    await queue.put((reply_message, user_id))
+
+    async def keyboard_message_sender(self, queue):
+        while True:
+            reply_message, user_id, reply_markup = await queue.get()
+            async with self.session.post(self.SEND_MESSAGE_URL, data= {'chat_id': user_id, 'text': reply_message, 'reply_markup': reply_markup}) as response:
                 r = await response.json()
                 if response.status == 200:
                     queue.task_done()
@@ -156,19 +194,17 @@ class AsyncWebsocketListener():
     async def test_decoder(self, queue):
         while True:
             message, user_id = await queue.get()
-            #test_id = '540863534'
-            #test_id_liza = '396538767'
             decoder = TextDecoder().main_parser(message)
-            print(decoder)
+
             if decoder:
                 redis = await aioredis.create_redis_pool(self.REDIS_TOKEN, encoding="utf-8")
                 number_of_tasks = await redis.zcard(user_id)
                 command_type = decoder.get('type')
                 if command_type == 'add':
-                    await redis.zadd(user_id, int(decoder.get('time').timestamp()), str(int(decoder.get('time').timestamp()))+'.'+decoder.get('task'))
-                    tasks_list = await redis.zrange(user_id , 0, -1)
+
                     show_time = decoder.get('time').strftime('%H:%M %d.%m.%y')
-                    await self.message_queue.put((f'Reminder has been set to {show_time}', user_id))
+                    show_task = decoder.get('task')
+                    await self.keyboard_queue.put((f'Set task "{show_task}" to {show_time} ?', user_id, createRowKeyboard([(str(int(decoder.get('time').timestamp()))+'.'+decoder.get('task'), 'Yes'), ('no', 'No')])))
 
                 elif command_type == 'list':
                     if number_of_tasks == 0:
@@ -204,16 +240,11 @@ class AsyncWebsocketListener():
                 elif command_type == 'alter':
                     key = int(decoder.get('key')) - 1
                     if key <= number_of_tasks and number_of_tasks != 0:
-                        await asyncio.sleep(1)
                         new_task = decoder.get('task')
                         old_task = await redis.zrange(user_id, key, key)
                         remaining_timestamp = old_task[0].split('.')[0]
                         old_task_text = old_task[0].split('.')[1]
-                        await redis.zrem(user_id, old_task[0])
-                        await redis.zadd(user_id, int(remaining_timestamp), f'{remaining_timestamp}.{new_task}')
-                        number_of_tasks = await redis.zcard(user_id)
-                        updated_task = await redis.zrange(user_id, key, key)
-                        await self.message_queue.put((f'Task has been updated from "{old_task_text}" to "{new_task}"', user_id))
+                        await self.keyboard_queue.put((f'Alter task "{old_task_text}" to "{new_task}" ?', user_id, createRowKeyboard([(str(key)+'.'+str(int(remaining_timestamp))+'.'+new_task, 'Yes'), ('no', 'No')])))
                     else:
                         await self.message_queue.put((f'Task with key {key} doesn\'t exist', user_id))
 
@@ -222,8 +253,7 @@ class AsyncWebsocketListener():
                     if key <= number_of_tasks and number_of_tasks != 0:
                         task_to_delete = await redis.zrange(user_id, key, key)
                         task_text = task_to_delete[0].split('.')[1]
-                        await redis.zrem(user_id, task_to_delete[0])
-                        await self.message_queue.put((f'Task {task_text} has been removed!', user_id))
+                        await self.keyboard_queue.put((f'Delete task "{task_text}" ?', user_id, createRowKeyboard([(str(key), 'Yes'), ('no', 'No')])))
                     else:
                         await self.message_queue.put((f'Task with key {key} doesn\'t exist', user_id))
 
@@ -233,17 +263,15 @@ class AsyncWebsocketListener():
                         task_to_move = await redis.zrange(user_id, key, key)
                         task_text = task_to_move[0].split('.')[1]
                         new_time = decoder.get('time')
-                        await redis.zrem(user_id, task_to_move[0])
                         if isinstance(new_time, timedelta):
                             previous_time = datetime.fromtimestamp(int(task_to_move[0].split('.')[0]))
                             move_time = (datetime(previous_time.year, previous_time.month, previous_time.day) + new_time)
                             time_to_message = move_time.strftime('%d.%m.%y %H:%M')
                             time_for_redis = int(move_time.timestamp())
-                            await redis.zadd(user_id, time_for_redis, f'{time_for_redis}.{task_text}')
                         else:
                             time_to_message = datetime.fromtimestamp(decoder.get('time')).strftime('%d.%m.%y %H:%M')
-                            await redis.zadd(user_id, decoder.get('time'), f'{new_time}.{task_text}')
-                        await self.message_queue.put((f'Task "{task_text}" has been moved to {time_to_message}', user_id))
+                            time_for_redis = decoder.get('time')
+                        await self.keyboard_queue.put((f'Shift task "{task_text}" to {time_to_message}?', user_id, createRowKeyboard([(str(key)+'.'+str(time_for_redis)+'.'+task_text, 'Yes'), ('no', 'No')])))
                     else:
                         await self.message_queue.put((f'Task with key {key} doesn\'t exist', user_id))
 
@@ -318,9 +346,11 @@ async def main(websocket, path):
         test_queue = asyncio.Queue()
         voice_queue = asyncio.Queue()
         decode_queue = asyncio.Queue()
+        keyboard_queue = asyncio.Queue()
+        reply_queue = asyncio.Queue()
 
 
-        listener = AsyncWebsocketListener(test_queue, voice_queue, message_queue, decode_queue)
+        listener = AsyncWebsocketListener(test_queue, voice_queue, message_queue, decode_queue, keyboard_queue, reply_queue)
         
         request = await websocket.recv()
         await websocket.send('200')
@@ -335,6 +365,8 @@ async def main(websocket, path):
                 await listener.redis_list_returner(data.get('user_id'))
             if data.get('type') == 'test':
                 await test_queue.put(data.get('message'))
+            if data.get('type') == 'reply_message':
+                await reply_queue.put((data.get('user_id'), data.get('message')))
 
         else:
             pass

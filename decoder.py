@@ -78,7 +78,7 @@ class TextDecoder():
 
     def date_parser(self, text):
         date_expression = re.compile(r'((?P<today>сегодня)|(?P<tomorrow>завтра)|(?P<day>\b\d{1,2}\b)\s?(?P<month>\w+))')
-        date_search = re.search(date_expression, text)
+        date_search = re.search(date_expression, text.lower())
         if date_search:
             if date_search.group('today'):
                 return_date = datetime.datetime(self.now.year, self.now.month, self.now.day)
@@ -97,7 +97,7 @@ class TextDecoder():
 
     def time_parser(self, text, move = False):
         time_expression = re.compile(r'((в\s)?((?P<time_with_sep>\d{1,2}:\d{2})|(?P<time_without_sep>\d{1,4}\s?)))')
-        time_search = re.search(time_expression, text)
+        time_search = re.search(time_expression, text.lower())
 
         if time_search:
             
@@ -149,12 +149,12 @@ class TextDecoder():
     def main_parser(self, text):
 
         prefix_expression = re.compile(r'(((?P<delete>^удалить)|(?P<alter>^изменить)|(?P<move>^перенести))\s(номер\s)?(?P<key>\d+|один|два|три|четыре|пять|шесть|семь|восемь|девять|десять)\s?)|(?P<list>^список)|(?P<help>^помощь)')
-        prefix_search = re.search(prefix_expression, text)
+        prefix_search = re.search(prefix_expression, text.lower())
 
         if prefix_search:
             key = prefix_search.group('key')
             if prefix_search.group('list'):
-                string_to_parse = re.sub('список', '', text)
+                string_to_parse = re.sub('список', '', text.lower())
                 list_date = self.date_parser(string_to_parse)
                 if list_date:
                     period_start = list_date[1]
@@ -171,10 +171,10 @@ class TextDecoder():
                 if prefix_search.group('delete'):
                     return({'type' : 'remove', 'key' : key})
                 elif prefix_search.group('alter'):
-                    new_task = re.sub(prefix_search.group(), '', text)
+                    new_task = re.sub(prefix_search.group(), '', text.lower())
                     return({'type' : 'alter', 'key' : key, 'task' : new_task})
                 elif prefix_search.group('move'):
-                    string_to_parse = re.sub(prefix_search.group(), '', text)
+                    string_to_parse = re.sub(prefix_search.group(), '', text.lower())
                     if self.datetime_parse(string_to_parse, move = True):
                         new_datetime = self.datetime_parse(string_to_parse, move = True)[0]
                         if isinstance(new_datetime, datetime.timedelta):
@@ -186,8 +186,8 @@ class TextDecoder():
                 return({'type': 'error', 'message': 'No key for action was provided'})
         
         else:
-            if self.datetime_parse(text):
-                time, task = self.datetime_parse(text)
+            if self.datetime_parse(text.lower()):
+                time, task = self.datetime_parse(text.lower())
                 return({'type' : 'add', 'task' : task, 'time' : time})
 
 
