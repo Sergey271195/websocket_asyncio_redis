@@ -77,7 +77,7 @@ class TextDecoder():
         self.now = datetime.datetime.now()
 
     def date_parser(self, text):
-        date_expression = re.compile(r'((?P<today>сегодня)|(?P<tomorrow>завтра)|(?P<day>\b\d{1,2}\b)\s?(?P<month>\w+))')
+        date_expression = re.compile(r'((?P<today>сегодня)|(?P<tomorrow>завтра)|(?P<day>\b\d{1,2}\b)\s?(?P<month>\w+))\s')
         date_search = re.search(date_expression, text.lower())
         if date_search:
             if date_search.group('today'):
@@ -102,7 +102,7 @@ class TextDecoder():
         if time_search:
             
             time_with_sep = time_search.group('time_with_sep')
-            time_without_sep = time_search.group('time_without_sep')
+            time_without_sep = time_search.group('time_without_sep').strip()
             print(time_with_sep, time_without_sep)
 
             if time_with_sep:
@@ -110,13 +110,16 @@ class TextDecoder():
                 return_time = datetime.timedelta(hours = int(hour), minutes = int(minutes))
 
             elif time_without_sep:
+                print('Without sep')
                 if len(time_without_sep) < 3:
                     return_time = datetime.timedelta(hours = int(time_without_sep))
                 elif len(time_without_sep) == 3:
+                    print(time_without_sep)
                     return_time = datetime.timedelta(hours = int(time_without_sep[0]), minutes = int(time_without_sep[1:3]))
                 else:
                     return_time = datetime.timedelta(hours = int(time_without_sep[0:2]), minutes = int(time_without_sep[2:4]))
-            
+
+            print(return_time)
             return(re.sub(time_search.group(), '', text).strip(), return_time)
 
 
@@ -163,7 +166,6 @@ class TextDecoder():
                 else:
                     return({'type':'list', 'period': list_date})
             elif prefix_search.group('help'):
-                print('HELP')
                 return({'type': 'help'})
             elif key:
                 if key in NUMBERS_DICT.keys():
@@ -186,8 +188,9 @@ class TextDecoder():
                 return({'type': 'error', 'message': 'No key for action was provided'})
         
         else:
-            if self.datetime_parse(text.lower()):
-                time, task = self.datetime_parse(text.lower())
+            result = self.datetime_parse(text.lower())
+            if result:
+                time, task = result
                 return({'type' : 'add', 'task' : task, 'time' : time})
 
 

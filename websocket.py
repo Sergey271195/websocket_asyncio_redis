@@ -51,7 +51,7 @@ class SpeechRecognitionThread(Thread):
 class AsyncTelegramListener():
 
     def __init__(self):
-        self.session = aiohttp.ClientSession()
+        
         self.TOKEN = os.environ.get('REMINDME_TOKEN')
         self.URL = f'https://api.telegram.org/bot{self.TOKEN}'
         self.SEND_MESSAGE_URL = os.path.join(self.URL, 'sendMessage')
@@ -62,6 +62,7 @@ class AsyncTelegramListener():
     async def redis_connection_listener(self, request_interval):
 
         redis = await aioredis.create_redis_pool(self.REDIS_TOKEN, encoding="utf-8")
+        session = aiohttp.ClientSession()
         while True:
             users = await redis.smembers('users')
             for user in users:
@@ -77,7 +78,7 @@ class AsyncTelegramListener():
                             message_to_send = f'You asked us to remind you about: {task}'
                             await redis.zrem(user, first_task[0])
                             try:
-                                async with self.session.post(self.SEND_MESSAGE_URL, data= {'chat_id': user, 'text': message_to_send}) as response:
+                                async with session.post(self.SEND_MESSAGE_URL, data= {'chat_id': user, 'text': message_to_send}) as response:
                                     print(response.status)
                                     if response.status == 200:
                                         print('Success')
@@ -129,6 +130,7 @@ class AsyncWebsocketListener():
             decode_task = loop.create_task(self.test_decoder(self.decode_queue))
             keyboard_tasks = loop.create_task(self.keyboard_message_sender(self.keyboard_queue))
             reply_tasks = loop.create_task(self.reply_message_handler(self.reply_queue))
+
 
     async def reply_message_handler(self, queue):
         while True:

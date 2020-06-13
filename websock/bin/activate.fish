@@ -29,7 +29,7 @@ end
 # unset irrelevant variables
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV "/home/sergey/Desktop/websocket/websock"
+set -gx VIRTUAL_ENV "/home/sergey/Desktop/telegram/REMINDME_BOT/websocket/websock"
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/bin" $PATH
@@ -52,7 +52,7 @@ if test -z "$VIRTUAL_ENV_DISABLE_PROMPT"
         set -l old_status $status
 
         # Prompt override?
-        if test -n "(websock) "            
+        if test -n "(websock) "
             printf "%s%s" "(websock) " (set_color normal)
         else
             # ...Otherwise, prepend env
